@@ -26,8 +26,8 @@ A simple command-line chat app built using Node.js and TCP sockets with **end-to
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/encrypted-tcp-chat.git
-cd encrypted-tcp-chat
+git clone https://github.com/pj4x/CTurn.git
+cd CTurn
 ```
 
 ### 2. Start the Server
