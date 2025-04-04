@@ -233,3 +233,196 @@ All server responses are JSON messages, newline-delimited, and follow this struc
 - Clients can only be in **one room at a time**
 - Messages are only broadcast to other clients in the same room
 - Server **never modifies** or inspects content of message-type packets
+
+
+---
+
+# 🔐 Client-Side End-to-End Encryption (E2EE) in the TCP Chat
+
+This section explains **how encryption works in the client**, specifically how RSA keys are generated, exchanged, and used to encrypt and decrypt chat messages in a secure, end-to-end encrypted environment.
+
+---
+
+## 🧰 What Is End-to-End Encryption?
+
+End-to-End Encryption (E2EE) ensures that:
+
+- Only the sender and intended recipients can **read the message**.
+- The server acts only as a **relay** and never has access to the plaintext.
+- Even if the server is compromised, messages remain secure.
+
+---
+
+## 📦 Technologies Used
+
+- **RSA** (2048-bit) asymmetric encryption (from Node's `crypto` module).
+- **Base64 representation** to safely send encrypted binary data over the network.
+- **JSON messaging** for client-server communication.
+
+> **Note:** Base64 is *not* an encryption method — it's a way to represent binary data (like an encrypted message) as safe text for transport.
+
+---
+
+## 🔑 Key Concepts
+
+### Public/Private Key Pair
+
+- Each client generates a **public/private RSA key pair** when it starts.
+- **Public Key**: Shared with the server and other clients.
+- **Private Key**: Stays secret and is used to decrypt messages.
+
+---
+
+## 🔁 Lifecycle of Encrypted Communication
+
+### 1. 🔐 Key Generation
+
+Upon client startup:
+
+```js
+const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" }
+});
+```
+
+- `publicKey` is sent to the server when joining a room.
+- `privateKey` is kept locally and used to decrypt incoming messages.
+
+---
+
+### 2. 📡 Public Key Distribution
+
+- When a client joins a room, their **public key is shared** with all other clients.
+- The server stores each client's public key and forwards them to new members when joining a room.
+
+> Example server message to a client:
+```json
+{
+  "type": "public_key",
+  "sender": "alice",
+  "body": {
+    "content": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...\n-----END PUBLIC KEY-----"
+  }
+}
+```
+
+---
+
+### 3. ✉️ Sending an Encrypted Message
+
+To send a message securely:
+
+```js
+const recipientKey = storedPublicKeys["bob"]; // PEM format
+const encrypted = crypto.publicEncrypt(
+  recipientKey,
+  Buffer.from("Hello Bob")
+).toString("base64"); // Represent encrypted data safely as a string
+```
+
+> ⚠️ **Note:** `.toString("base64")` only converts the encrypted binary buffer into text form. The actual encryption happens via `crypto.publicEncrypt()` using the recipient's public key.
+
+- This encrypted string is included in a `message` payload:
+```json
+{
+  "type": "message",
+  "body": {
+    "content": "BASE64_ENCRYPTED_TEXT"
+  }
+}
+```
+
+- Sent over the socket, just like normal.
+
+> ⚠️ If multiple users are in the room, the client must encrypt the message **once per recipient** using each public key.
+
+---
+
+### 4. 📥 Receiving and Decrypting a Message
+
+When a message is received from the server:
+
+```js
+const encryptedBase64 = message.body.content;
+const decrypted = crypto.privateDecrypt(
+  privateKey,
+  Buffer.from(encryptedBase64, "base64") // Convert Base64 text back to binary
+).toString();
+```
+
+> ⚠️ **Note:** `.from(..., "base64")` decodes the Base64 string back into binary before decryption. The encryption itself happened earlier using the sender's public key.
+
+- Only the client with the correct private key can decrypt this content.
+- The decrypted string is then shown in the UI (i.e. terminal output).
+
+---
+
+### 5. 🗂 Keyring Management
+
+Each client maintains a **keyring** — a dictionary mapping usernames to their public keys:
+
+```js
+const keyring = {
+  alice: "-----BEGIN PUBLIC KEY-----\n...",
+  bob:   "-----BEGIN PUBLIC KEY-----\n..."
+};
+```
+
+- When a user joins the room, the server sends their username and public key.
+- The client adds it to the keyring so it can encrypt messages for them.
+
+---
+
+## 🔐 Why RSA?
+
+RSA is used here because:
+- It works well in a **client-to-client context** without needing an external key exchange.
+- It’s relatively easy to implement in Node.js without external libraries.
+- It avoids symmetric key sharing via the server.
+
+> That said, RSA isn't ideal for large payloads. In a production app, you'd use **RSA to encrypt a shared AES key**, then encrypt the message using AES.
+
+---
+
+## 🚫 What the Server Sees
+
+The server **does not see**:
+- The plaintext of any chat message.
+- Any private key material.
+
+The server only sees:
+- Encrypted blobs (usually long base64 strings).
+- Public key exchange messages.
+- Metadata like who sent it and the room name.
+
+---
+
+## 🧪 Example: Full Encryption Round Trip
+
+1. Alice joins the room and shares her public key.
+2. Bob joins and shares his.
+3. Alice wants to message Bob:
+   - Encrypts `Hello` with Bob's public key.
+   - Encodes the result in Base64 for transmission.
+   - Sends it via `message`.
+4. Bob receives the encrypted Base64 string.
+   - Decodes it from Base64.
+   - Decrypts it with his private key.
+   - Reads `Hello`.
+
+---
+
+## ✅ Summary
+
+| Step                     | Action                                   |
+|--------------------------|------------------------------------------|
+| Startup                  | Generate RSA key pair                    |
+| Room Join                | Send public key to server                |
+| Room Update              | Receive others' public keys              |
+| Send Message             | Encrypt for each recipient and Base64-encode it |
+| Receive Message          | Base64-decode, then decrypt with private key |
+| Server's Role            | Relay messages only (no decryption)      |
+
+> 💡 **Base64 is only a transport format** — the actual security comes from RSA encryption using each recipient's public key.
