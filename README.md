@@ -23,13 +23,22 @@ Alle Nachrichten werden als JSON-Objekte übertragen.
 3. **Nachrichtenflow**
    ```mermaid
    graph LR
-   A[Sender] -->|1. Generiere AES-Key| A
-   A -->|2. Verschlüssele Nachricht| A
-   A -->|3. Verschlüssele AES-Key mit RSA| A
-   A -->|4. Sende an Server| B[Server]
-   B -->|5. Broadcast an alle| C[Empfänger]
-   C -->|6. Entschlüssele AES-Key| C
-   C -->|7. Entschlüssele Nachricht| C
+    subgraph Sender
+    A1[1. Generiere AES-Key]
+    A2[2. Verschlüssele Nachricht]
+    A3[3. Verschlüssele AES-Key mit RSA]
+    end
+    
+    subgraph Empfänger
+    C1[6. Entschlüssele AES-Key]
+    C2[7. Entschlüssele Nachricht]
+    end
+    
+    A1 --> A2
+    A2 --> A3
+    A3 -->|4. Sende Paket an Server| B[Server]
+    B -->|5. Broadcast an alle Empfänger| C1
+    C1 --> C2
 
 ### Client → Server
 | Typ        | Pflichtfeld | Beschreibung                       | Beispiel                                      |
