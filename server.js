@@ -1,16 +1,17 @@
 const net = require("net");
+const crypto = require("crypto");
 const port = 1337;
 
-const clients = new Map(); // socket -> { currentRoom: string | null, username: string }
+const clients = new Map(); // socket -> { currentRoom: string | null, username: string, publicKey: string }
 const rooms = new Map(); // roomName -> Set<socket>
 
 const server = net.createServer((socket) => {
   console.log("Client connected");
 
-  // Initialize client state
   clients.set(socket, {
     currentRoom: null,
     username: null,
+    publicKey: null,
   });
   socket.setEncoding("utf8");
 
@@ -30,40 +31,33 @@ const server = net.createServer((socket) => {
 function handleMessage(socket, message) {
   const clientState = clients.get(socket);
 
-  // Modified validation to allow leave command without content
   if (!message.type || !message.body) {
     return sendError(socket, "Invalid message format");
   }
 
-  // Only validate content for types that require it
-  if (message.type !== "leave" && !message.body.content) {
-    return sendError(socket, "Invalid message format");
-  }
-
-  // Check username requirements
-  if (!clientState.username && message.type !== "username") {
-    return sendError(socket, "You must set a username first");
-  }
-
   switch (message.type) {
     case "username":
-      handleSetUsername(socket, message.body.content);
+      if (!message.body.content || !message.body.publicKey) {
+        return sendError(socket, "Username and public key required");
+      }
+      handleSetUsername(socket, message.body.content, message.body.publicKey);
       break;
     case "create":
+      if (!clientState.username) return sendError(socket, "Set username first");
+      if (!message.body.content) return sendError(socket, "Room name required");
       handleCreateRoom(socket, message.body.content);
       break;
     case "join":
+      if (!clientState.username) return sendError(socket, "Set username first");
+      if (!message.body.content) return sendError(socket, "Room name required");
       handleJoinRoom(socket, message.body.content);
       break;
     case "message":
-      if (!clientState.currentRoom) {
-        return sendError(socket, "You must join a room first");
-      }
-      broadcastRoomMessage(
-        socket,
-        clientState.currentRoom,
-        message.body.content,
-      );
+      if (!clientState.currentRoom)
+        return sendError(socket, "Join a room first");
+      if (!message.body.content)
+        return sendError(socket, "Message content required");
+      handleEncryptedMessage(socket, message.body.content);
       break;
     case "leave":
       handleLeaveRoom(socket);
@@ -73,7 +67,7 @@ function handleMessage(socket, message) {
   }
 }
 
-function handleSetUsername(socket, username) {
+function handleSetUsername(socket, username, publicKey) {
   const clientState = clients.get(socket);
   if (clientState.username) {
     return sendError(socket, "Username already set");
@@ -85,12 +79,12 @@ function handleSetUsername(socket, username) {
   }
 
   clientState.username = username;
+  clientState.publicKey = publicKey;
   sendMessage(socket, "welcome", `Username set to: ${username}`);
 }
 
 function handleCreateRoom(socket, roomName) {
   const clientState = clients.get(socket);
-
   if (clientState.currentRoom) {
     return sendError(socket, "Leave current room first");
   }
@@ -102,12 +96,11 @@ function handleCreateRoom(socket, roomName) {
   rooms.set(roomName, new Set([socket]));
   clientState.currentRoom = roomName;
   sendMessage(socket, "welcome", `Created and joined room: ${roomName}`);
-  sendSystemMessage(roomName, `${clientState.username} created the room`);
+  sendKeyUpdate(roomName, clientState.username, clientState.publicKey);
 }
 
 function handleJoinRoom(socket, roomName) {
   const clientState = clients.get(socket);
-
   if (clientState.currentRoom) {
     return sendError(socket, "Leave current room first");
   }
@@ -120,45 +113,36 @@ function handleJoinRoom(socket, roomName) {
   room.add(socket);
   clientState.currentRoom = roomName;
   sendMessage(socket, "welcome", `Joined room: ${roomName}`);
-  sendSystemMessage(
-    roomName,
-    `${clientState.username} joined the room`,
-    socket,
-  );
-}
 
-function handleLeaveRoom(socket) {
-  const clientState = clients.get(socket);
+  // Send new user's key to all room members
+  sendKeyUpdate(roomName, clientState.username, clientState.publicKey);
 
-  if (!clientState.currentRoom) {
-    return sendError(socket, "Not in any room");
-  }
-
-  const roomName = clientState.currentRoom;
-  const room = rooms.get(roomName);
-  const username = clientState.username;
-
-  if (room) {
-    room.delete(socket);
-    sendSystemMessage(roomName, `${username} left the room`);
-    if (room.size === 0) {
-      rooms.delete(roomName);
+  // Send all existing keys to new user
+  room.forEach((client) => {
+    if (client !== socket) {
+      const memberState = clients.get(client);
+      sendKeyUpdate(
+        roomName,
+        memberState.username,
+        memberState.publicKey,
+        socket,
+      );
     }
-  }
-
-  clientState.currentRoom = null;
-  sendMessage(socket, "welcome", `Left room: ${roomName}`);
+  });
 }
 
-function broadcastRoomMessage(sender, roomName, content) {
-  const room = rooms.get(roomName);
+function handleEncryptedMessage(sender, encryptedData) {
+  const senderState = clients.get(sender);
+  const room = rooms.get(senderState.currentRoom);
   if (!room) return;
 
-  const senderState = clients.get(sender);
   const message = JSON.stringify({
-    type: "message",
+    type: "encrypted_message",
     sender: senderState.username,
-    body: { content: content },
+    iv: encryptedData.iv,
+    tag: encryptedData.tag,
+    content: encryptedData.content,
+    keys: encryptedData.keys,
   });
 
   room.forEach((client) => {
@@ -168,18 +152,38 @@ function broadcastRoomMessage(sender, roomName, content) {
   });
 }
 
+function handleLeaveRoom(socket) {
+  const clientState = clients.get(socket);
+  if (!clientState.currentRoom) {
+    return sendError(socket, "Not in any room");
+  }
+
+  const roomName = clientState.currentRoom;
+  const room = rooms.get(roomName);
+  if (room) {
+    room.delete(socket);
+    if (room.size === 0) {
+      rooms.delete(roomName);
+    } else {
+      sendSystemMessage(roomName, `${clientState.username} left the room`);
+    }
+  }
+
+  clientState.currentRoom = null;
+  sendMessage(socket, "welcome", `Left room: ${roomName}`);
+}
+
 function handleDisconnect(socket) {
   const clientState = clients.get(socket);
-  const username = clientState.username;
+  if (!clientState) return;
 
   if (clientState.currentRoom) {
     const roomName = clientState.currentRoom;
     const room = rooms.get(roomName);
-
     if (room) {
       room.delete(socket);
       if (room.size > 0) {
-        sendSystemMessage(roomName, `${username} disconnected`);
+        sendSystemMessage(roomName, `${clientState.username} disconnected`);
       }
       if (room.size === 0) {
         rooms.delete(roomName);
@@ -191,7 +195,28 @@ function handleDisconnect(socket) {
   console.log("Client disconnected");
 }
 
-function sendSystemMessage(roomName, content, excludeSocket = null) {
+function sendKeyUpdate(roomName, username, publicKey, targetSocket = null) {
+  const room = rooms.get(roomName);
+  if (!room) return;
+
+  const message = JSON.stringify({
+    type: "key_update",
+    body: {
+      username: username,
+      publicKey: publicKey,
+    },
+  });
+
+  if (targetSocket) {
+    targetSocket.write(message + "\n");
+  } else {
+    room.forEach((client) => {
+      client.write(message + "\n");
+    });
+  }
+}
+
+function sendSystemMessage(roomName, content) {
   const room = rooms.get(roomName);
   if (!room) return;
 
@@ -201,9 +226,7 @@ function sendSystemMessage(roomName, content, excludeSocket = null) {
   });
 
   room.forEach((client) => {
-    if (client !== excludeSocket) {
-      client.write(message + "\n");
-    }
+    client.write(message + "\n");
   });
 }
 
@@ -220,9 +243,5 @@ function sendError(socket, errorMessage) {
 }
 
 server.listen(port, () => {
-  console.log(`TCP server listening on port ${port}`);
-});
-
-server.on("error", (err) => {
-  console.error(`Server error: ${err.message}`);
+  console.log(`Secure chat server listening on port ${port}`);
 });
