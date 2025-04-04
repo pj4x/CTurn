@@ -101,7 +101,7 @@ This project is licensed under the Creative Commons Attribution-NonCommercial 4.
 Commercial use is prohibited without prior written permission from the author.
 
 Author: Junus Safsouf
-Contact: 
+Contact: safsouf.junus@gmail.com
 
 ---
 
