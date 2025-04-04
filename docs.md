@@ -18,6 +18,19 @@ This document describes the TCP-based protocol for communicating with the chat s
 - All messages sent to the server should already be **encrypted client-side**
 - The server only relays messages between connected sockets
 
+### **How the Encryption Works**
+
+The server supports **End-to-End encryption** using the **RSA (Rivest-Shamir-Adleman)** public-key cryptosystem. The main goal is to ensure that **only the intended recipient(s)** can read the message, and the server only relays the encrypted data without ever being able to decrypt it.
+
+#### Key Generation and Sharing
+- **RSA Keypair**: Each client generates a unique **2048-bit RSA keypair** (public and private keys) when starting up.
+- **Public Key Exchange**: When a client joins a room, their **public key** is shared with other clients in that room. The **private key** is kept secret and used only by the client to decrypt messages.
+
+#### Encryption Process
+- **Sender's Side**: When a user sends a message, the **content is encrypted** using the **recipient's public key**. This ensures that only the recipient's private key can decrypt the message.
+- **Recipient's Side**: When the recipient receives the message, it can be decrypted using their own **private key**. Only the client with the corresponding private key can decrypt the message.
+- **The Server**: The server simply relays the encrypted message to all recipients in the room. It **cannot decrypt** any messages because it does not have access to the clients' private keys.
+
 ---
 
 ## 📤 Client-to-Server Messages
