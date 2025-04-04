@@ -214,15 +214,9 @@ All server responses are JSON messages, newline-delimited, and follow this struc
 
 ---
 
-## 💡 Tips
+## 💡 Protocol Constraints
 
 - Clients **must set a username** before issuing other commands
 - Clients can only be in **one room at a time**
 - Messages are only broadcast to other clients in the same room
-- Server **never modifies** or inspects `message.body.content`
-
----
-
-## 📫 Questions?
-
-Reach out to the project owner for API extensions or commercial integrations.
+- Server **never modifies** or inspects content of message-type packets
