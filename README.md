@@ -20,29 +20,6 @@ Alle Nachrichten werden als JSON-Objekte übertragen.
 2. **Schlüsselverwaltung**
    - Jeder Client generiert ein RSA-Schlüsselpaar beim Start
    - Public Keys werden über den Server ausgetauscht
-3. **Nachrichtenflow**
-   ```mermaid
-   graph LR
-    subgraph Sender[Sender]
-    A1(1. Generate AES Key)
-    A2(2. Encrypt Message)
-    A3(3. Encrypt Key with RSA)
-    end
-
-    subgraph Server[Server]
-    B(4. Broadcast to All)
-    end
-
-    subgraph Receiver[Receiver]
-    C1(5. Decrypt AES Key)
-    C2(6. Decrypt Message)
-    end
-
-    A1 --> A2
-    A2 --> A3
-    A3 -->|4. Send Encrypted Package| B
-    B -->|5. Distribute to Clients| C1
-    C1 --> C2
 
 
 ### Client → Server
