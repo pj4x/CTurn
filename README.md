@@ -1,88 +1,110 @@
-# TCP-Chat-Server Dokumentation
+# 🔐 **CTurn** Encrypted TCP Chat
 
-## Übersicht
-Ein Node.js TCP-Server für Chat-Räume mit folgenden Funktionen:
-- Benutzerauthentifizierung mit eindeutigen Usernamen
-- Raumverwaltung (Erstellen/Beitreten/Verlassen)
-- Nachrichtenverteilung in Räumen
-- Systemnachrichten für Benutzeraktivitäten
-- Fehlerbehandlung mit detaillierten Meldungen
+A simple command-line chat app built using Node.js and TCP sockets with **end-to-end RSA encryption** between clients. The server acts only as a relay and **cannot read any messages**.
 
-## Nachrichtenformat
-Alle Nachrichten werden als JSON-Objekte übertragen.
+---
 
-## End-to-End-Verschlüsselung
+## 🛠 Features
 
-### Architekturänderungen
-1. **Hybride Verschlüsselung**
-   - RSA-2048 für Schlüsselaustausch
-   - AES-256-GCM für Nachrichtenverschlüsselung
-2. **Schlüsselverwaltung**
-   - Jeder Client generiert ein RSA-Schlüsselpaar beim Start
-   - Public Keys werden über den Server ausgetauscht
+- 🗣️ Multi-room text chat via TCP
+- 🔑 Each client generates an RSA keypair
+- 📬 Messages are **encrypted per recipient** using their public key
+- 📡 The server only relays encrypted messages
+- 🛡️ No plaintext message is ever exposed to the server
+- ⚙️ Commands to create/join/leave rooms
 
+---
 
-### Client → Server
-| Typ        | Pflichtfeld | Beschreibung                       | Beispiel                                      |
-|------------|-------------|------------------------------------|-----------------------------------------------|
-| username   | content     | Benutzername festlegen             | `{"type":"username","body":{"content":"Bob"}}`|
-| create     | content     | Raum erstellen                     | `{"type":"create","body":{"content":"lobby"}}`|
-| join       | content     | Raum beitreten                     | `{"type":"join","body":{"content":"lobby"}}`  |
-| message    | content     | Nachricht an Raum senden            | `{"type":"message","body":{"content":"Hallo"}}`|
-| leave      | -           | Raum verlassen                     | `{"type":"leave","body":{"content":""}}`      |
+## 📦 Requirements
 
-### Server → Client
-| Typ       | Felder         | Beschreibung                       | Beispiel                                      |
-|-----------|----------------|------------------------------------|-----------------------------------------------|
-| welcome   | content        | Bestätigung einer Aktion           | `{"type":"welcome","body":{"content":"Raum verlassen: lobby"}}` |
-| error     | content        | Fehlermeldung                      | `{"type":"error","body":{"content":"Ungültiges Nachrichtenformat"}}` |
-| message   | sender, content| Chatnachricht von Benutzer         | `{"type":"message","sender":"Bob","body":{"content":"Hallo"}}` |
-| system    | content        | Systembenachrichtigung             | `{"type":"system","body":{"content":"Alice hat den Raum betreten"}}` |
+- Node.js (v16+ recommended)
 
-## Befehlsreferenz
-| Befehl          | Syntax            | Beschreibung                       |
-|-----------------|-------------------|------------------------------------|
-| Benutzername    | `/username <name>`| Muss als erstes gesendet werden    |
-| Raum erstellen  | `/create <name>`  | Erstellt neuen Raum                |
-| Raum beitreten  | `/join <name>`    | Tritt existierendem Raum bei       |
-| Nachricht       | `<text>`          | Sendet Nachricht an aktuellen Raum |
-| Raum verlassen  | `/leave`          | Verlässt aktuellen Raum            |
+---
 
-## Client-Verhalten
-1. Verbindung herstellen
-2. Raum mit `/create` oder `/join` betreten
-3. Nachrichten senden oder Raum mit `/leave` verlassen
+## 🚀 Getting Started
 
-## Fehlerbehandlung
-| Fehlermeldung                      | Ursache                                       |
-|------------------------------------|-----------------------------------------------|
-| "Ungültiges JSON-Format"           | Ungültige JSON-Syntax                         |
-| "Ungültiges Nachrichtenformat"     | Fehlende Pflichtfelder in der Nachricht       |
-| "Sie müssen einen Benutzernamen festlegen" | Aktion vor Benutzernamensetzung versucht      |
-| "Raum existiert bereits"           | Versuch einen existierenden Raum zu erstellen |
-| "Raum existiert nicht"             | Beitrittsversuch zu nicht-existentem Raum     |
+### 1. Clone the repo
 
-## Beispielablauf
-```json
-// Client 1
-> /username Alice
-{"type":"welcome","body":{"content":"Benutzername gesetzt: Alice"}}
-> /create lobby
-{"type":"welcome","body":{"content":"Raum erstellt und betreten: lobby"}}
-{"type":"system","body":{"content":"Alice hat den Raum erstellt"}}
+```bash
+git clone https://github.com/your-username/encrypted-tcp-chat.git
+cd encrypted-tcp-chat
+```
 
-// Client 2
-> /username Bob
-{"type":"welcome","body":{"content":"Benutzername gesetzt: Bob"}}
-> /join lobby
-{"type":"welcome","body":{"content":"Raum betreten: lobby"}}
-{"type":"system","body":{"content":"Bob hat den Raum betreten"}}
+### 2. Start the Server
 
-// Client 1
-> Hallo zusammen!
-{"type":"message","sender":"Alice","body":{"content":"Hallo zusammen!"}}
+```bash
+node server.js
+```
 
-// Client 2
-> /leave
-{"type":"system","body":{"content":"Bob hat den Raum verlassen"}}
-{"type":"welcome","body":{"content":"Raum verlassen: lobby"}}
+The server will start on port `1337` by default.
+
+### 3. Run Clients
+
+Open **multiple terminals** to simulate multiple clients:
+
+```bash
+node client.js
+```
+
+You’ll be prompted to enter a username and then interact via command-line.
+
+---
+
+## 💬 Chat Commands
+
+Type these into the client prompt:
+
+| Command           | Description                          |
+|-------------------|--------------------------------------|
+| `/create [name]`  | Create a new chat room               |
+| `/join [name]`    | Join an existing chat room           |
+| `/leave`          | Leave the current room               |
+| `[text]`          | Send a message to all room members   |
+
+---
+
+## 🔐 Encryption Details
+
+- **Key Generation**: Each client generates a 2048-bit RSA keypair on startup
+- **Public Key Sharing**: When a user joins a room, their public key is broadcasted to others
+- **Encryption**: Messages are encrypted using each recipient's public key
+- **Decryption**: Recipients decrypt messages with their private key
+- **The Server**: Does not store or see decrypted messages
+
+---
+
+## 📁 Project Structure
+
+```
+.
+├── server.js    # TCP server relays encrypted messages
+└── client.js    # Client CLI with encryption/decryption logic
+```
+
+---
+
+## ✅ Example Session
+
+```bash
+> /create chillzone
+[Server] Created and joined room: chillzone
+[System] Alice created the room
+
+> hey there everyone!
+Bob: hey back at you!   # (decrypted from encrypted message)
+```
+
+---
+
+## 📜 License
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) License.
+Commercial use is prohibited without prior written permission from the author.
+
+Author: Junus Safsouf
+Contact: 
+
+---
+
+## 🤝 Contributions
+
+Pull requests welcome! Start a discussion if you have ideas for improvement 🔧
