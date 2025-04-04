@@ -11,6 +11,26 @@ Ein Node.js TCP-Server für Chat-Räume mit folgenden Funktionen:
 ## Nachrichtenformat
 Alle Nachrichten werden als JSON-Objekte übertragen.
 
+## End-to-End-Verschlüsselung
+
+### Architekturänderungen
+1. **Hybride Verschlüsselung**
+   - RSA-2048 für Schlüsselaustausch
+   - AES-256-GCM für Nachrichtenverschlüsselung
+2. **Schlüsselverwaltung**
+   - Jeder Client generiert ein RSA-Schlüsselpaar beim Start
+   - Public Keys werden über den Server ausgetauscht
+3. **Nachrichtenflow**
+   ```mermaid
+   graph LR
+   A[Sender] -->|1. Generiere AES-Key| A
+   A -->|2. Verschlüssele Nachricht| A
+   A -->|3. Verschlüssele AES-Key mit RSA| A
+   A -->|4. Sende an Server| B[Server]
+   B -->|5. Broadcast an alle| C[Empfänger]
+   C -->|6. Entschlüssele AES-Key| C
+   C -->|7. Entschlüssele Nachricht| C
+
 ### Client → Server
 | Typ        | Pflichtfeld | Beschreibung                       | Beispiel                                      |
 |------------|-------------|------------------------------------|-----------------------------------------------|
